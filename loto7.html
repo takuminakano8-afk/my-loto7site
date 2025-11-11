@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ロト7 当選番号検索</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+            <h1 class="text-3xl font-bold text-center text-indigo-900 mb-6">
+                ロト7 当選番号検索
+            </h1>
+
+            <!-- データ読み込み状態 -->
+            <div id="dataStatus" class="mb-6 p-4 rounded-lg border-2">
+                <div class="flex items-center justify-center text-blue-600">
+                    <svg class="animate-spin mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        <path d="M9 12l2 2 4-4"></path>
+                    </svg>
+                    <span>データを読み込んでいます...</span>
+                </div>
+            </div>
+
+            <!-- 選択した数字 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold text-gray-700">
+                        選択した数字 (<span id="selectedCount">0</span>/7)
+                    </h2>
+                    <button id="clearBtn" class="text-sm text-red-500 hover:text-red-700 items-center hidden">
+                        ✕ クリア
+                    </button>
+                </div>
+                <div id="selectedNumbers" class="min-h-16 p-4 bg-indigo-50 rounded-lg border-2 border-indigo-200">
+                    <p class="text-gray-400 text-center">数字を選択してください</p>
+                </div>
+            </div>
+
+            <!-- 数字選択ボタン -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-3">数字を選択</h2>
+                <div id="numberGrid" class="grid grid-cols-7 gap-2"></div>
+            </div>
+
+            <!-- 検索ボタン -->
+            <button id="searchBtn" disabled class="w-full py-4 rounded-lg font-bold text-lg bg-gray-300 text-gray-500 cursor-not-allowed transition-all">
+                当選結果を検索
+            </button>
+        </div>
+
+        <!-- 検索結果 -->
+        <div id="resultsContainer" class="bg-white rounded-2xl shadow-xl p-6 hidden"></div>
+    </div>
+
+    <script>
+        const CSV_URL = 'https://gist.githubusercontent.com/takuminakano8-afk/c0e63ed7380ac69d3d95fd060f064f8b/raw/68c623ea346423f7b8f5de327845330ecea34d32/ioto7.csv';
+        
+        let lotoData = [];
+        let selectedNumbers = [];
+        
+        const prizeNames = {
+            1: '1等', 2: '2等', 3: '3等', 
+            4: '4等', 5: '5等', 6: '6等'
+        };
+        
+        const prizeColors = {
+            1: 'bg-yellow-500', 2: 'bg-orange-500', 3: 'bg-red-500',
+            4: 'bg-purple-500', 5: 'bg-blue-500', 6: 'bg-green-500'
+        };
+
+        // CSVパース
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line) {
+                    const values = line.split(',').map(v => parseInt(v.trim()));
+                    if (values.length >= 10 && !isNaN(values[0])) {
+                        data.push({
+                            round: values[0],
+                            mainNumbers: values.slice(1, 8),
+                            bonusNumbers: values.slice(8, 10)
+                        });
+                    }
+                }
+            }
+            return data;
+        }
+
+        // データ読み込み
+        async function loadData() {
+            const statusDiv = document.getElementById('dataStatus');
+            try {
+                const response = await fetch(CSV_URL);
+                if (!response.ok) throw new Error('データの取得に失敗しました');
+                
+                const text = await response.text();
+                lotoData = parseCSV(text);
+                
+                statusDiv.innerHTML = `
+                    <div class="flex items-center justify-between bg-green-50 border-green-200">
+                        <span class="text-green-800 font-medium">
+                            ✓ データ読み込み完了 (${lotoData.length}回分)
+                        </span>
+                        <button onclick="loadData()" class="text-sm text-green-600 hover:text-green-800">
+                            🔄 更新
+                        </button>
+                    </div>
+                `;
+                updateSearchButton();
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerHTML = `
+                    <div class="bg-red-50 border-red-200">
+                        <p class="text-red-800 font-medium mb-2">データの読み込みに失敗しました</p>
+                        <button onclick="loadData()" class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
+                            再試行
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // 数字ボタン作成
+        function createNumberGrid() {
+            const grid = document.getElementById('numberGrid');
+            for (let i = 1; i <= 37; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.dataset.number = i;
+                btn.className = 'h-12 rounded-lg font-semibold text-lg transition-all bg-white text-gray-700 border-2 border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer';
+                btn.onclick = () => toggleNumber(i);
+                grid.appendChild(btn);
+            }
+        }
+
+        // 数字選択トグル
+        function toggleNumber(num) {
+            const index = selectedNumbers.indexOf(num);
+            if (index > -1) {
+                selectedNumbers.splice(index, 1);
+            } else if (selectedNumbers.length < 7) {
+                selectedNumbers.push(num);
+                selectedNumbers.sort((a, b) => a - b);
+            }
+            updateSelectedDisplay();
+            updateNumberButtons();
+            updateSearchButton();
+        }
+
+        // 選択数字表示更新
+        function updateSelectedDisplay() {
+            const container = document.getElementById('selectedNumbers');
+            const countSpan = document.getElementById('selectedCount');
+            const clearBtn = document.getElementById('clearBtn');
+            
+            countSpan.textContent = selectedNumbers.length;
+            
+            if (selectedNumbers.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-center">数字を選択してください</p>';
+                clearBtn.classList.add('hidden');
+            } else {
+                clearBtn.classList.remove('hidden');
+                container.innerHTML = `
+                    <div class="flex flex-wrap gap-2 justify-center">
+                        ${selectedNumbers.map(num => `
+                            <div class="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-lg shadow-md">
+                                ${num}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        // 数字ボタン状態更新
+        function updateNumberButtons() {
+            document.querySelectorAll('#numberGrid button').forEach(btn => {
+                const num = parseInt(btn.dataset.number);
+                const isSelected = selectedNumbers.includes(num);
+                const isFull = selectedNumbers.length >= 7;
+                
+                if (isSelected) {
+                    btn.className = 'h-12 rounded-lg font-semibold text-lg transition-all bg-indigo-600 text-white shadow-lg scale-105 cursor-pointer';
+                } else if (isFull) {
+                    btn.className = 'h-12 rounded-lg font-semibold text-lg transition-all bg-white text-gray-700 border-2 border-gray-300 opacity-30 cursor-not-allowed';
+                } else {
+                    btn.className = 'h-12 rounded-lg font-semibold text-lg transition-all bg-white text-gray-700 border-2 border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer';
+                }
+            });
+        }
+
+        // 検索ボタン状態更新
+        function updateSearchButton() {
+            const btn = document.getElementById('searchBtn');
+            const canSearch = selectedNumbers.length === 7 && lotoData.length > 0;
+            
+            if (canSearch) {
+                btn.disabled = false;
+                btn.className = 'w-full py-4 rounded-lg font-bold text-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg hover:shadow-xl transition-all cursor-pointer';
+            } else {
+                btn.disabled = true;
+                btn.className = 'w-full py-4 rounded-lg font-bold text-lg bg-gray-300 text-gray-500 cursor-not-allowed transition-all';
+            }
+        }
+
+        // クリア
+        function clearSelection() {
+            selectedNumbers = [];
+            updateSelectedDisplay();
+            updateNumberButtons();
+            updateSearchButton();
+            document.getElementById('resultsContainer').classList.add('hidden');
+        }
+
+        // 当選判定
+        function checkMatch(mainNumbers, bonusNumbers, selected) {
+            const mainMatches = selected.filter(num => mainNumbers.includes(num)).length;
+            const bonusMatches = selected.filter(num => bonusNumbers.includes(num)).length;
+
+            if (mainMatches === 7) return 1;
+            if (mainMatches === 6 && bonusMatches >= 1) return 2;
+            if (mainMatches === 6) return 3;
+            if (mainMatches === 5) return 4;
+            if (mainMatches === 4) return 5;
+            if (mainMatches === 3 && bonusMatches >= 1) return 6;
+            return 0;
+        }
+
+        // 検索実行
+        function search() {
+            if (selectedNumbers.length !== 7 || lotoData.length === 0) {
+                alert('7つの数字を選択してください');
+                return;
+            }
+
+            const searchBtn = document.getElementById('searchBtn');
+            searchBtn.textContent = '検索中...';
+            searchBtn.disabled = true;
+
+            setTimeout(() => {
+                const matchResults = [];
+
+                lotoData.forEach(draw => {
+                    const prize = checkMatch(draw.mainNumbers, draw.bonusNumbers, selectedNumbers);
+                    if (prize > 0) {
+                        matchResults.push({
+                            round: draw.round,
+                            prize: prize,
+                            mainNumbers: draw.mainNumbers,
+                            bonusNumbers: draw.bonusNumbers
+                        });
+                    }
+                });
+
+                displayResults(matchResults);
+                searchBtn.textContent = '当選結果を検索';
+                updateSearchButton();
+            }, 300);
+        }
+
+        // 結果表示
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+            container.classList.remove('hidden');
+
+            if (results.length === 0) {
+                container.innerHTML = `
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">検索結果</h2>
+                    <p class="text-center text-gray-500 py-8">選択した番号での当選履歴はありません</p>
+                `;
+                return;
+            }
+
+            let html = '<h2 class="text-2xl font-bold text-gray-800 mb-4">検索結果</h2><div class="space-y-6">';
+
+            for (let prize = 1; prize <= 6; prize++) {
+                const prizeResults = results.filter(r => r.prize === prize);
+                if (prizeResults.length === 0) continue;
+
+                html += `
+                    <div class="space-y-3">
+                        <h3 class="text-xl font-bold px-4 py-2 rounded-lg inline-block text-white ${prizeColors[prize]}">
+                            ${prizeNames[prize]} (${prizeResults.length}件)
+                        </h3>
+                        <div class="space-y-2 ml-4">
+                `;
+
+                prizeResults.forEach(result => {
+                    html += `
+                        <div class="p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border-l-4 border-gray-400">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-lg text-gray-800">第${result.round}回</span>
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                <div class="mb-1">本数字: ${result.mainNumbers.join(', ')}</div>
+                                <div>ボーナス: ${result.bonusNumbers.join(', ')}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            }
+
+            html += `
+                <div class="mt-4 p-3 bg-blue-50 rounded-lg text-center">
+                    <p class="text-blue-800 font-semibold">
+                        合計 ${results.length}件 の当選履歴が見つかりました
+                    </p>
+                </div>
+            </div>`;
+
+            container.innerHTML = html;
+        }
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            createNumberGrid();
+            loadData();
+            document.getElementById('searchBtn').onclick = search;
+            document.getElementById('clearBtn').onclick = clearSelection;
+        });
+    </script>
+</body>
+</html>
